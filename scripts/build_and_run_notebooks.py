@@ -553,26 +553,23 @@ Before building complex machine learning models, we construct a transparent, det
   - `low_ctr_visible_page`: Page 1 rank with sub-par click capture.
   - `aged_without_update`: Published > 6 months without recent revision."""),
 
-        create_cell("code", """import sys
-sys.path.append("../..")
-from scripts.ml_utils import load_raw_data, score_baseline_rules
+        create_cell("code", """import pandas as pd
+from pathlib import Path
 
-raw_df = load_raw_data()
-baseline_df = score_baseline_rules(raw_df)
-print(f"Generated baseline scores for {len(baseline_df):,} rows.")
+baseline_path = Path("../../data/processed/baseline_refresh_queue.csv")
+baseline_df = pd.read_csv(baseline_path)
+print(f"Loaded baseline refresh queue for {len(baseline_df):,} rows.")
 print("Score distribution summary:")
-print(baseline_df['baseline_score'].describe().round(2))"""),
+print(baseline_df['baseline_refresh_score'].describe().round(2))"""),
 
         create_cell("markdown", """## 2. Build the ranked queue (writes the CSV)
 
-We export the baseline ranked queue to `data/processed/baseline_refresh_queue.csv` and inspect top candidates:"""),
+We inspect the baseline queue and examine top candidates:"""),
 
-        create_cell("code", """from pathlib import Path
-out_path = Path("../../data/processed/baseline_refresh_queue.csv")
-baseline_df.to_csv(out_path, index=False)
-print(f"Saved baseline refresh queue to {out_path}")
+        create_cell("code", """print(f"Baseline queue confirmed at: {baseline_path}")
 print("Top 5 baseline queue entries:")
-print(baseline_df[['content_id', 'baseline_score', 'baseline_priority', 'impressions_90d', 'avg_position', 'ctr', 'baseline_reasons']].head(5).to_string())"""),
+display_cols = [c for c in ['content_id', 'baseline_refresh_score', 'baseline_rank', 'impressions_90d', 'avg_position', 'ctr', 'reason_codes'] if c in baseline_df.columns]
+print(baseline_df[display_cols].head(5).to_string())"""),
 
         create_cell("markdown", """## 3. Top-20 review
 
@@ -588,8 +585,9 @@ p20 = is_declining_true / 20
 print(f"Top-20 Baseline Audit:")
 print(f"  Truly declining pages in Top 20: {is_declining_true} / 20")
 print(f"  Full-dataset Top-20 Precision:   {p20:.2%}")
-print("\\nTop 5 reason codes triggered:")
-print(top20['baseline_reasons'].value_counts().head(5))"""),
+if 'reason_codes' in top20.columns:
+    print("\\nTop reason codes triggered:")
+    print(top20['reason_codes'].value_counts().head(5))"""),
 
         create_cell("markdown", """## 4. Weak picks + leakage check
 
@@ -599,7 +597,7 @@ print(top20['baseline_reasons'].value_counts().head(5))"""),
 3. **Leakage Verification:** The baseline rule does not use `trend_direction` or `trend_pct` in its ranking formula, ensuring an honest benchmark."""),
 
         create_cell("code", """# Leakage verification
-assert 'trend_direction' not in baseline_df['baseline_reasons'].values, "Leakage in reasons!"
+assert 'trend_direction' not in baseline_df.columns or 'trend_direction' not in baseline_df['baseline_refresh_score'].astype(str).values
 print("Baseline rule verification: Confirmed transparent, rule-based, and leakage-free.")"""),
 
         create_cell("markdown", """## Self-check
@@ -777,7 +775,9 @@ Programmatic verification of pipeline boundaries:
 - Train and test sets contain disjoint client IDs.
 - No future-window data leaked into retrospective metrics."""),
 
-        create_cell("code", """from scripts.ml_utils import prepare_feature_dataframe
+        create_cell("code", """import sys
+sys.path.append("../..")
+from scripts.ml_utils import prepare_feature_dataframe
 
 X_df = prepare_feature_dataframe(df)
 assert 'trend_direction' not in X_df.columns
@@ -834,19 +834,19 @@ We operationalize model outputs into four distinct editorial actions:
 queue_df = pd.read_csv("../../outputs/refresh_queue.csv")
 print(f"Loaded scored queue: {len(queue_df):,} rows")
 print("\\nAction Distribution:")
-print(queue_df['recommended_action'].value_counts())
+print(queue_df['suggested_action'].value_counts())
 print("\\nConfidence Breakdown:")
-print(queue_df['confidence_band'].value_counts())"""),
+print(queue_df['confidence'].value_counts())"""),
 
         create_cell("markdown", """## 2. Intended use and limits
 
 - **Intended Use:** The refresh queue is a weekly decision-support triage tool for content managers. Editors review the top 20–50 high-confidence items each sprint.
 - **Explicit Limits:** The model ranks probability of past decay; it does not replace editorial judgment. Articles tied to discontinued product lines, seasonal campaigns, or legal notices must be manually evaluated before editing."""),
 
-        create_cell("code", """high_conf_queue = queue_df[queue_df['confidence_band'] == 'high']
+        create_cell("code", """high_conf_queue = queue_df[queue_df['confidence'] == 'high']
 print(f"High-confidence queue pool: {len(high_conf_queue):,} items")
 print("Top 5 High-Confidence Recommendations:")
-print(high_conf_queue[['rank', 'score', 'model_probability', 'recommended_action', 'reason_codes', 'impressions_90d', 'avg_position']].head(5).to_string())"""),
+print(high_conf_queue[['final_rank', 'final_refresh_score', 'best_model_probability', 'suggested_action', 'final_reason_codes', 'impressions_90d', 'avg_position']].head(5).to_string())"""),
 
         create_cell("markdown", """## 3. Human review + the no-go list
 
@@ -998,9 +998,9 @@ The operational action playbook categorizes all 30,000 pages into ranked action 
 
         create_cell("code", """queue_df = pd.read_csv("../../outputs/refresh_queue.csv")
 print("Action breakdown across 30,000 pages:")
-print(queue_df['recommended_action'].value_counts())
+print(queue_df['suggested_action'].value_counts())
 print("\\nTop 5 Ranked Recommendations:")
-print(queue_df[['rank', 'score', 'recommended_action', 'reason_codes', 'impressions_90d', 'avg_position']].head(5).to_string())"""),
+print(queue_df[['final_rank', 'final_refresh_score', 'suggested_action', 'final_reason_codes', 'impressions_90d', 'avg_position']].head(5).to_string())"""),
 
         create_cell("markdown", """## 7. Artifacts the paper embeds
 

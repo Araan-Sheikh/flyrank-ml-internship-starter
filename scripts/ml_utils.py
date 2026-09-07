@@ -102,6 +102,41 @@ MODEL_CATEGORICAL_FEATURES = [
 ]
 
 
+def load_raw_data() -> pd.DataFrame:
+    return pd.read_csv(RAW_PATH)
+
+
+def build_feature_matrix(frame: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    numeric_features = [
+        column for column in MODEL_NUMERIC_FEATURES if column in frame.columns
+    ]
+    categorical_features = [
+        column for column in MODEL_CATEGORICAL_FEATURES if column in frame.columns
+    ]
+
+    numeric_frame = frame[numeric_features].apply(pd.to_numeric, errors="coerce")
+    numeric_frame = numeric_frame.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+    categorical_frame = frame[categorical_features].fillna("unknown").astype(str)
+    encoded_frame = pd.get_dummies(
+        categorical_frame,
+        prefix=categorical_features,
+        dummy_na=False,
+        dtype=float,
+    )
+
+    feature_frame = pd.concat(
+        [numeric_frame.reset_index(drop=True), encoded_frame.reset_index(drop=True)],
+        axis=1,
+    )
+    return feature_frame, list(feature_frame.columns)
+
+
+def prepare_feature_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
+    feature_frame, _ = build_feature_matrix(frame)
+    return feature_frame
+
+
 def ensure_dirs() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
